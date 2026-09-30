@@ -9,7 +9,8 @@ use crate::prelude::*;
 use crate::structures::cheat::{Suggestion, VariableMap};
 use crate::structures::item::Item;
 use shell::EOF;
-use std::process::Stdio;
+use std::io::{self, Write};
+use std::process::{self, Stdio};
 
 fn query_with_override(query: Option<String>, query_override: Option<String>) -> Option<String> {
     query_override.or(query)
@@ -243,7 +244,14 @@ pub fn act(
 
     match CONFIG.action() {
         Action::Print => {
-            println!("{interpolated_snippet}");
+            // `println!` panics when the reader of a pipe has gone away;
+            // write through the locked handle so a broken pipe exits quietly
+            if let Err(e) = writeln!(io::stdout().lock(), "{interpolated_snippet}") {
+                if e.kind() == io::ErrorKind::BrokenPipe {
+                    process::exit(0);
+                }
+                return Err(e).context("Failed to print snippet");
+            }
         }
         Action::Execute => match key {
             "ctrl-y" => {
